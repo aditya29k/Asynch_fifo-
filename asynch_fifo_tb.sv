@@ -66,10 +66,8 @@ module tb;
     @(posedge intf.clka);
     intf.wr_en <= 1'b0;
     if(intf.full) begin
-      $display("FIFO IS FULL");
       return;
     end
-    else $display("DATA WRITTEN: %0d", trans.data_in);
     @(posedge intf.clka);
   endtask
   
@@ -78,12 +76,9 @@ module tb;
     intf.rd_en <= 1'b1;
     @(posedge intf.clkb);
     intf.rd_en <= 1'b0;
-    @(posedge intf.clkb);
     if(intf.empty) begin
-      $display("FIFO IS EMPTY last data: %0d", intf.data_out);
       return;
     end
-    else $display("DATA: %0d", intf.data_out);
     @(posedge intf.clkb);
   endtask
   
@@ -94,7 +89,6 @@ module tb;
       if(trans.wr_en) write(trans);
       if(trans.rd_en) read(trans);
     join
-    $display("-----------------");
   endtask
   
   initial begin
