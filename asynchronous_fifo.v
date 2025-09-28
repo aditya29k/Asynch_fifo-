@@ -1,97 +1,118 @@
-module async_fifo#(
-    parameter DATA_WIDTH = 8,
-    parameter ADDR_WIDTH = 3,
-    parameter DEPTH = 8
-)(
-    input wr_clk, wr_en, wr_rst,
-    input [DATA_WIDTH-1 : 0] wr_data,
-    input rd_clk, rd_en, rd_rst,
-    output [DATA_WIDTH-1 : 0] rd_data,
-    output full, empty
+`ifndef DATA_WIDTH;
+	`define DATA_WIDTH 8
+`endif
+
+`ifndef DEPTH
+	`define DEPTH 8
+`endif
+
+`ifndef PTR_WIDTH
+	`define PTR_WIDTH 3
+`endif
+
+module async_fifo(
+  input clka, rsta,
+  input [`DATA_WIDTH-1:0] data_in,
+  input wr_en,
+  output full,
+  
+  input clkb, rstb,
+  output reg [`DATA_WIDTH-1:0] data_out,
+  input rd_en,
+  output empty
 );
-
-    reg [DATA_WIDTH-1:0] fifo [0:DEPTH-1];
-
-    reg [ADDR_WIDTH:0] wr_ptr_bin, wr_ptr_gray, wr_ptr_sync1, wr_ptr_sync2;
-    wire [ADDR_WIDTH:0] wr_ptr_sync_bin;
-    reg [ADDR_WIDTH:0] rd_ptr_bin, rd_ptr_gray, rd_ptr_sync1, rd_ptr_sync2;
-    wire [ADDR_WIDTH:0] rd_ptr_sync_bin;
-
-    // WRITE LOGIC
-    always@(posedge wr_clk) begin
-        if(wr_rst) begin
-            wr_ptr_bin <= 0;
-            wr_ptr_gray <= 0;
-        end
-        else if(wr_en&~full)begin
-            wr_ptr_bin <= wr_ptr_bin + 1;
-            fifo[wr_ptr_bin[ADDR_WIDTH-1:0]] <= wr_data;
-            wr_ptr_gray <= (wr_ptr_bin+1)^((wr_ptr_bin+1)>>1);
-        end
+  
+  reg [`PTR_WIDTH:0] bin_wr_ptr, bin_rd_ptr;
+  reg [`PTR_WIDTH:0] gray_wr_ptr, gray_rd_ptr;
+  reg [`PTR_WIDTH:0] sync1_wr_ptr, sync1_rd_ptr;
+  reg [`PTR_WIDTH:0] sync2_wr_ptr, sync2_rd_ptr;
+  wire [`PTR_WIDTH:0] wr_sync, rd_sync;
+  
+  reg [`DATA_WIDTH-1:0] fifo [0:`DEPTH-1];
+  
+  integer i;
+  
+  function [`PTR_WIDTH:0] b2g;
+    input [`PTR_WIDTH:0] bin;
+    integer i;
+    begin
+      b2g[`PTR_WIDTH] = bin[`PTR_WIDTH];
+      for(i=`PTR_WIDTH; i>0; i=i-1) begin
+        b2g[i-1] = bin[i-1]^bin[i];
+      end
     end
-
-    // READ LOGIC
-    always@(posedge rd_clk) begin
-        if(rd_rst) begin
-            rd_ptr_bin <= 0;
-            rd_ptr_gray <= 0;
-        end
-        else if(rd_en&~empty) begin
-            rd_ptr_bin <= rd_ptr_bin + 1;
-            rd_ptr_gray <= (rd_ptr_bin+1)^((rd_ptr_bin+1)>>1);
-        end
+  endfunction
+  
+  always@(posedge clka) begin
+    if(rsta) begin
+      bin_wr_ptr <= 0;
+      gray_wr_ptr <= 0;
+      
+      for(i = 0; i<`DEPTH; i=i+1) begin
+        fifo[i] <= 0;
+      end
     end
-
-    assign rd_data = fifo[rd_ptr_bin[ADDR_WIDTH-1:0]];
-
-    // WRITE DOUBLE SYNC
-    always@(posedge rd_clk, posedge rd_rst) begin
-        if(rd_rst) begin
-            wr_ptr_sync1 <= 0;
-            wr_ptr_sync2 <= 0;
-        end
-        else begin
-            wr_ptr_sync1 <= wr_ptr_gray;
-            wr_ptr_sync2 <= wr_ptr_sync1;
-        end
+    else begin
+      if(wr_en&&!full) begin
+        fifo[bin_wr_ptr[`PTR_WIDTH-1:0]] <= data_in;
+        bin_wr_ptr <= bin_wr_ptr + 1;
+        gray_wr_ptr <= b2g(bin_wr_ptr+1);
+      end
     end
-
-    // READ DOUBLE SYNC
-    always@(posedge wr_clk, posedge wr_rst) begin
-        if(wr_rst) begin
-            rd_ptr_sync1 <= 0;
-            rd_ptr_sync2 <= 0;
-        end
-        else begin
-            rd_ptr_sync1 <= rd_ptr_gray;
-            rd_ptr_sync2 <= rd_ptr_sync1;
-        end
+  end
+  
+  always@(posedge clkb) begin
+    if(rstb) begin
+      bin_rd_ptr <= 0;
+      gray_rd_ptr <= 0;
+      data_out <= 0;
     end
-
-    // G2B FUNCTION
-    function [ADDR_WIDTH:0] g2b;
-        input [ADDR_WIDTH:0] gray;
-        integer i;
-        reg [ADDR_WIDTH:0] bin;
-        begin
-
-            bin[ADDR_WIDTH] = gray[ADDR_WIDTH];
-            for(i = ADDR_WIDTH; i>0; i = i - 1) begin
-                bin[i-1] = bin[i]^gray[i-1];
-            end
-            g2b = bin;
-        end 
-
-    endfunction
-    
-    // BINARY SYNCH WIRE'S
-    assign rd_ptr_sync_bin = g2b(rd_ptr_sync2);
-    assign wr_ptr_sync_bin = g2b(wr_ptr_sync2);
-
-    // FLAGS
-
-    assign full = (wr_ptr_bin[ADDR_WIDTH] != rd_ptr_sync_bin[ADDR_WIDTH])&(wr_ptr_bin[ADDR_WIDTH-1:0] == rd_ptr_sync_bin[ADDR_WIDTH-1:0]);
-    assign empty = (rd_ptr_bin == wr_ptr_sync_bin);
-
-
+    else begin
+      if(rd_en&&!empty) begin
+        data_out <= fifo[bin_rd_ptr[`PTR_WIDTH-1:0]];
+        bin_rd_ptr <= bin_rd_ptr + 1;
+        gray_rd_ptr <= b2g(bin_rd_ptr + 1);
+      end
+    end
+  end
+  
+  always@(posedge clka) begin
+    if(rsta) begin
+      sync1_rd_ptr <= 0;
+      sync2_rd_ptr <= 0;
+    end
+    else begin
+      sync1_rd_ptr <= gray_rd_ptr;
+      sync2_rd_ptr <= sync1_rd_ptr;
+    end
+  end
+  
+  always@(posedge clkb) begin
+    if(rstb) begin
+      sync1_wr_ptr <= 0;
+      sync2_wr_ptr <= 0;
+    end
+    else begin
+      sync1_wr_ptr <= gray_wr_ptr;
+      sync2_wr_ptr <= sync1_wr_ptr;
+    end
+  end
+  
+  function [`PTR_WIDTH:0] g2b;
+    input [`PTR_WIDTH:0] gray;
+    integer i;
+    begin
+      g2b[`PTR_WIDTH] = gray[`PTR_WIDTH];
+      for(i=`PTR_WIDTH; i>0; i=i-1) begin
+        g2b[i-1] = gray[i-1]^g2b[i];
+      end
+    end
+  endfunction
+  
+  assign wr_sync = g2b(sync2_wr_ptr);
+  assign rd_sync = g2b(sync2_rd_ptr);
+  
+  assign full = (bin_wr_ptr[`PTR_WIDTH] != rd_sync[`PTR_WIDTH])&&(bin_wr_ptr[`PTR_WIDTH-1:0] == rd_sync[`PTR_WIDTH-1:0]);
+  assign empty = (bin_rd_ptr == wr_sync);
+  
 endmodule
