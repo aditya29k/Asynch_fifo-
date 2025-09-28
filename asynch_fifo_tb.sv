@@ -1,93 +1,106 @@
+`ifndef DATA_WIDTH;
+	`define DATA_WIDTH 8
+`endif
+
+`ifndef DEPTH
+	`define DEPTH 8
+`endif
+
+`ifndef PTR_WIDTH
+	`define PTR_WIDTH 3
+`endif
+
+interface async_intf;
+  
+  logic clka, rsta, clkb, rstb;
+  logic [`DATA_WIDTH-1:0] data_in, data_out;
+  logic wr_en, rd_en;
+  logic full, empty;
+  
+endinterface
+
+class transaction;
+  
+  rand bit [`DATA_WIDTH-1:0] data_in;
+  rand bit wr_en, rd_en;
+  
+endclass
+
 module tb;
-
-    parameter ADDR_WIDTH = 3;
-    parameter DATA_WIDTH = 8;
-    parameter DEPTH = 8;
-
-    reg wr_en, rd_en;
-    reg [DATA_WIDTH-1:0] wr_data;
-    wire full, empty;
-    reg wr_clk, wr_rst;
-    reg rd_clk, rd_rst;
-    wire [DATA_WIDTH-1:0] rd_data;
-    
-    reg [DATA_WIDTH-1:0] q[$];
-    reg [DATA_WIDTH-1:0] temp;
-
-    async_fifo_assertion #(ADDR_WIDTH, DATA_WIDTH, DEPTH) DUT (wr_en, wr_data, full, wr_clk, wr_rst, rd_en, rd_clk, rd_rst, rd_data, empty);
-
-    always #10 wr_clk = ~wr_clk;
-    always #35 rd_clk = ~rd_clk;
-
-  	task write(); 
-
-        wr_clk = 1'b0; wr_rst = 1'b1;
-        wr_en = 1'b0;
-        wr_data = 0;
-
-        repeat(5) @(posedge wr_clk);
-        wr_rst = 1'b0;
-
-        for (int i = 0; i < DEPTH; i++) begin
-          @(posedge wr_clk); // let reset be applied fully then wr_en = 1'b1 not at same clk
-            if (!full) begin
-                wr_en = 1;
-                wr_data = $urandom_range(0, 255);
-                q.push_back(wr_data);
-                $display("WRITE: %0d", wr_data);
-            end
-          @(posedge wr_clk); // data written then wr_en is 0
-            wr_en = 0;
-        end
-
-        wr_en = 0; 
-
-    endtask
-
-  task read();
-
-        rd_clk = 1'b0; rd_rst = 1'b1;
-        rd_en = 1'b0;
-
-        repeat(10) @(posedge rd_clk);
-        rd_rst = 1'b0;
-
-        repeat(5) @(posedge wr_clk); // for data to propogate across domains
-
-        while (q.size() > 0) begin
-            if (!empty) begin
-                rd_en = 1;
-                @(posedge rd_clk);
-                temp = q.pop_front();
-                if (rd_data === temp) begin
-                    $display("DATA MATCHED: %0d", temp);
-                end else begin
-                    $display("DATA MISMATCHED: pop_data: %0d, output: %0d", temp, rd_data);
-                end
-              rd_en = 1'b0;
-            end
-        end
-
+  
+  async_intf intf();
+  
+  async_fifo DUT (.clka(intf.clka), .rsta(intf.rsta), .clkb(intf.clkb), .rstb(intf.rstb), .data_in(intf.data_in), .data_out(intf.data_out), .wr_en(intf.wr_en), .rd_en(intf.rd_en), .full(intf.full), .empty(intf.empty));
+  
+  transaction trans;
+  
+  initial begin
+    intf.clka <= 0;
+    intf.clkb <= 0;
+  end
+  
+  always #5 intf.clka <= ~intf.clka;
+  always #15 intf.clkb <= ~intf.clkb;
+  
+  initial begin
+    $dumpfile("dump.vcd");
+    $dumpvars;
+  end
+  
+  task reset();
+    intf.rsta <= 1'b1;
+    intf.rstb <= 1'b1;
+    intf.data_in <= 0;
+    intf.wr_en <= 1'b0;
+    intf.rd_en <= 1'b0;
+    repeat(2) @(posedge intf.clkb);
+    $display("SYSTEM RESET");
+    intf.rsta <= 1'b0;
+    intf.rstb <= 1'b0;
+  endtask
+  
+  task write(transaction trans);
+    @(posedge intf.clka);
+    intf.wr_en <= 1'b1;
+    intf.data_in <= trans.data_in;
+    @(posedge intf.clka);
+    intf.wr_en <= 1'b0;
+    if(intf.full) begin
+      $display("FIFO IS FULL");
+      return;
+    end
+    else $display("DATA WRITTEN: %0d", trans.data_in);
+    @(posedge intf.clka);
+  endtask
+  
+  task read(transaction trans);
+    @(posedge intf.clkb);
+    intf.rd_en <= 1'b1;
+    @(posedge intf.clkb);
+    intf.rd_en <= 1'b0;
+    @(posedge intf.clkb);
+    if(intf.empty) begin
+      $display("FIFO IS EMPTY last data: %0d", intf.data_out);
+      return;
+    end
+    else $display("DATA: %0d", intf.data_out);
+    @(posedge intf.clkb);
+  endtask
+  
+  task run();
+    trans = new();
+    assert(trans.randomize()) else $error("RANDOMIZATION ERROR");
+    fork
+      if(trans.wr_en) write(trans);
+      if(trans.rd_en) read(trans);
+    join
+    $display("-----------------");
   endtask
   
   initial begin
-    
-    fork
-      
-      write();
-      read();
-      
-    join
-
+    reset();
+    repeat(10)run();
     $finish();
-    
   end
-
-    initial begin
-
-        $dumpfile("dump.vcd");
-        $dumpvars;
-
-    end
-
+  
 endmodule
