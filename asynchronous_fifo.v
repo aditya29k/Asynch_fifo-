@@ -7,7 +7,7 @@
 `endif
 
 `ifndef PTR_WIDTH
-	`define PTR_WIDTH 3
+	`define PTR_WIDTH $clog2(`DEPTH)
 `endif
 
 module async_fifo(
@@ -116,3 +116,4 @@ module async_fifo(
   assign empty = (bin_rd_ptr == wr_sync);
   
 endmodule
+
