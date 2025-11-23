@@ -24,7 +24,19 @@ class transaction;
   rand bit [`DATA_WIDTH-1:0] data_in;
   rand bit wr_en, rd_en;
   
+  extern constraint wr_en_cons;
+  extern constraint rd_en_cons;
+  extern constraint data_cons;
+  
+  function void post_randomize();
+    $display("[TRANS] wr_en: %b, rd_en: %b, data: %0d", this.wr_en, this.rd_en, this.data_in);
+  endfunction
+  
 endclass
+
+constraint transaction::wr_en_cons { wr_en dist {1:=70, 0:=30}; }
+constraint transaction::rd_en_cons { rd_en dist {1:=40, 0:=60}; }
+constraint transaction::data_cons { data_in inside {[1:15]}; }
 
 module tb;
   
@@ -64,6 +76,7 @@ module tb;
     intf.wr_en <= 1'b1;
     intf.data_in <= trans.data_in;
     @(posedge intf.clka);
+    $display("[WRITE] data: %0d", intf.data_in);
     intf.wr_en <= 1'b0;
     if(intf.full) begin
       return;
@@ -80,6 +93,7 @@ module tb;
       return;
     end
     @(posedge intf.clkb);
+    $display("[READ] data: %0d", intf.data_out);
   endtask
   
   task run();
