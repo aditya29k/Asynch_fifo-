@@ -45,7 +45,7 @@ module async_fifo(
       if(wr_en&&!full) begin
         fifo[bin_wr_ptr[`PTR_WIDTH-1:0]] <= data_in;
         bin_wr_ptr <= bin_wr_ptr + 1;
-        gray_wr_ptr <= b2g(bin_wr_ptr+1);
+		gray_wr_ptr <= (bin_wr_ptr+1)^((bin_wr_ptr+1)>>1);
       end
     end
   end
@@ -60,7 +60,7 @@ module async_fifo(
       if(rd_en&&!empty) begin
         data_out <= fifo[bin_rd_ptr[`PTR_WIDTH-1:0]];
         bin_rd_ptr <= bin_rd_ptr + 1;
-        gray_rd_ptr <= b2g(bin_rd_ptr + 1);
+		gray_rd_ptr <= (bin_rd_ptr+1)^((bin_rd_ptr+1)>>1);
       end
     end
   end
@@ -105,5 +105,6 @@ module async_fifo(
   assign empty = (bin_rd_ptr == wr_sync);
   
 endmodule
+
 
 
