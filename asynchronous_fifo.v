@@ -31,18 +31,7 @@ module async_fifo(
   reg [`DATA_WIDTH-1:0] fifo [0:`DEPTH-1];
   
   integer i;
-  
-  function [`PTR_WIDTH:0] b2g;
-    input [`PTR_WIDTH:0] bin;
-    integer i;
-    begin
-      b2g[`PTR_WIDTH] = bin[`PTR_WIDTH];
-      for(i=`PTR_WIDTH; i>0; i=i-1) begin
-        b2g[i-1] = bin[i-1]^bin[i];
-      end
-    end
-  endfunction
-  
+
   always@(posedge clka) begin
     if(rsta) begin
       bin_wr_ptr <= 0;
@@ -116,4 +105,5 @@ module async_fifo(
   assign empty = (bin_rd_ptr == wr_sync);
   
 endmodule
+
 
